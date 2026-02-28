@@ -18,6 +18,11 @@
 #include "solo3v3_sc.h"
 #include <unordered_map>
 
+
+// Force vtable emission (clang): define key virtual functions out-of-line
+ConfigLoader3v3Arena::~ConfigLoader3v3Arena() = default;
+Team3v3arena::~Team3v3arena() = default;
+Arena_SC::~Arena_SC() = default;
 struct SoloMatchContext
 {
     bool rated = false;
