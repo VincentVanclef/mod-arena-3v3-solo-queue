@@ -840,14 +840,3 @@ bool Solo3v3::HasIgnoreConflict(Player* candidate, BattlegroundQueue* queue, uin
     }
     return false;
 }
-
-void AddSC_Solo_3v3_Arena()
-{
-    LOG_INFO("module", "[Solo3v3] AddSC_Solo_3v3_Arena() called - module is loading.");
-    Solo3v3::instance();
-}
-
-void AddSC_Solo_3v3_commandscript()
-{
-    LOG_INFO("module", "[Solo3v3] AddSC_Solo_3v3_commandscript() called.");
-}
