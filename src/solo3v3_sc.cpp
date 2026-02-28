@@ -23,6 +23,56 @@
 ConfigLoader3v3Arena::~ConfigLoader3v3Arena() = default;
 Team3v3arena::~Team3v3arena() = default;
 Arena_SC::~Arena_SC() = default;
+
+// ---------------------------------------------------------------------------
+// Missing method definitions (required for linking)
+// ---------------------------------------------------------------------------
+
+void ConfigLoader3v3Arena::OnAfterConfigLoad(bool /*Reload*/)
+{
+    // Keep this lightweight: the real matchmaking/queue logic is in Solo3v3BG.
+    if (sConfigMgr->GetOption<bool>("Solo.3v3.Enable", true))
+        LOG_INFO("module", "[Solo3v3] Solo 3v3 module enabled (rated+unrated). NPC + queue hooks loaded.");
+}
+
+void Team3v3arena::OnGetSlotByType(const uint32 type, uint8& slot)
+{
+    // Map SOLO team type to the normal 3v3 slot.
+    if (type == ARENA_TEAM_SOLO_3v3)
+        slot = ARENA_SLOT_SOLO_3v3;
+}
+
+void Team3v3arena::OnGetArenaPoints(ArenaTeam* at, float& points)
+{
+    if (!at)
+        return;
+
+    if (at->GetType() == ARENA_TEAM_SOLO_3v3)
+        points *= sConfigMgr->GetOption<float>("Solo.3v3.ArenaPointsMulti", 0.88f);
+}
+
+void Team3v3arena::OnTypeIDToQueueID(const BattlegroundTypeId /*bgTypeId*/, const uint8 arenaType, uint32& _bgQueueTypeId)
+{
+    if (arenaType == ARENA_TYPE_3v3_SOLO)
+        _bgQueueTypeId = BATTLEGROUND_QUEUE_3v3_SOLO;
+}
+
+void Team3v3arena::OnQueueIdToArenaType(const BattlegroundQueueTypeId _bgQueueTypeId, uint8& arenaType)
+{
+    if (uint32(_bgQueueTypeId) == BATTLEGROUND_QUEUE_3v3_SOLO)
+        arenaType = ARENA_TYPE_3v3_SOLO;
+}
+
+void Arena_SC::OnArenaStart(Battleground* bg)
+{
+    if (!bg)
+        return;
+
+    if (bg->GetArenaType() != ARENA_TYPE_3v3_SOLO)
+        return;
+
+    sSolo->CheckStartSolo3v3Arena(bg);
+}
 struct SoloMatchContext
 {
     bool rated = false;
