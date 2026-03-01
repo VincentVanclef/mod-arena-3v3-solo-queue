@@ -71,22 +71,10 @@ bool NpcSolo3v3::OnGossipHello(Player* player, Creature* creature)
     if (ratedEnabled && !player->InBattlegroundQueueForBattlegroundQueueType((BattlegroundQueueTypeId)BATTLEGROUND_QUEUE_3v3_SOLO))
         AddGossipItemFor(player, GOSSIP_ICON_INTERACT_1, "|TInterface/ICONS/Achievement_Arena_3v3_5:30:30:-18:0|t Queue 3v3soloQ (Rated)\n", GOSSIP_SENDER_MAIN, NPC_3v3_ACTION_JOIN_QUEUE_ARENA_RATED);
 
-    // Legacy: keep the "solo arena team" creation/disband UI for servers that still want it.
-    if (!player->GetArenaTeamId(ARENA_SLOT_SOLO_3v3))
-    {
-        uint32 cost = sConfigMgr->GetOption<uint32>("Solo.3v3.Cost", 1);
-        if (player->IsPvP())
-            cost = 0;
 
-        AddGossipItemFor(player, GOSSIP_ICON_INTERACT_1, "|TInterface/ICONS/Achievement_Arena_2v2_7:30:30:-18:0|t  Create new Solo arena team", GOSSIP_SENDER_MAIN, NPC_3v3_ACTION_CREATE_ARENA_TEAM, "Create new solo arena team?", cost, false);
-    }
-    else
-    {
-        if (!player->InBattlegroundQueueForBattlegroundQueueType((BattlegroundQueueTypeId)BATTLEGROUND_QUEUE_3v3_SOLO))
-            AddGossipItemFor(player, GOSSIP_ICON_DOT, "|TInterface/ICONS/Achievement_Arena_2v2_7:30:30:-18:0|t Disband Arena team", GOSSIP_SENDER_MAIN, NPC_3v3_ACTION_DISBAND_ARENATEAM, "Are you sure?", 0, false);
-
-        AddGossipItemFor(player, GOSSIP_ICON_DOT, "|TInterface/ICONS/INV_Misc_Coin_01:30:30:-18:0|t Show statistics", GOSSIP_SENDER_MAIN, NPC_3v3_ACTION_GET_STATISTICS);
-    }
+    // Solo Queue uses a separate ladder table and does NOT require a permanent ArenaTeam.
+    // Keep the NPC UI focused on queueing + stats (no create/disband team).
+    AddGossipItemFor(player, GOSSIP_ICON_DOT, "|TInterface/ICONS/INV_Misc_Coin_01:30:30:-18:0|t Show statistics", GOSSIP_SENDER_MAIN, NPC_3v3_ACTION_GET_STATISTICS);
 
     AddGossipItemFor(player, GOSSIP_ICON_CHAT, "|TInterface/ICONS/inv_misc_questionmark:30:30:-20:0|t Help", GOSSIP_SENDER_MAIN, NPC_3v3_ACTION_SCRIPT_INFO);
 
@@ -105,26 +93,12 @@ bool NpcSolo3v3::OnGossipSelect(Player* player, Creature* creature, uint32 /*sen
     switch (action)
     {
         case NPC_3v3_ACTION_CREATE_ARENA_TEAM:
-        {
-            if (sConfigMgr->GetOption<uint32>("Solo.3v3.MinLevel", 80) <= player->GetLevel())
-            {
-                int cost = sConfigMgr->GetOption<uint32>("Solo.3v3.Cost", 1);
-
-                if (player->IsPvP())
-                    cost = 0;
-
-                if (cost >= 0 && player->GetMoney() >= uint32(cost) && CreateArenateam(player, creature))
-                    player->ModifyMoney(sConfigMgr->GetOption<uint32>("Solo.3v3.Cost", 1) * -1);
-            }
-            else
-            {
-                ChatHandler(player->GetSession()).PSendSysMessage("You need level {}+ to create an arena team.", sConfigMgr->GetOption<uint32>("Solo.3v3.MinLevel", 80));
-            }
-
-            CloseGossipMenuFor(player);
-            return true;
-        }
-        break;
+{
+    // Solo Queue does not require a permanent ArenaTeam (separate ladder table).
+    ChatHandler(player->GetSession()).SendSysMessage("Solo Queue does not require an arena team. You can queue immediately.");
+    CloseGossipMenuFor(player);
+    return true;
+}
 
         case NPC_3v3_ACTION_JOIN_QUEUE_ARENA_RATED:
         {
@@ -164,7 +138,7 @@ bool NpcSolo3v3::OnGossipSelect(Player* player, Creature* creature, uint32 /*sen
         {
             if (player->InBattlegroundQueueForBattlegroundQueueType((BattlegroundQueueTypeId)BATTLEGROUND_QUEUE_3v3_SOLO))
             {
-                uint8 arenaType = ARENA_TYPE_3v3;
+                uint8 arenaType = 3; // force 3v3 display for SoloQ
 
                 WorldPacket Data;
                 Data << arenaType << (uint8)0x0 << (uint32)BATTLEGROUND_AA << (uint16)0x0 << (uint8)0x0;
@@ -176,47 +150,28 @@ bool NpcSolo3v3::OnGossipSelect(Player* player, Creature* creature, uint32 /*sen
         }
 
         case NPC_3v3_ACTION_GET_STATISTICS:
-        {
-            ArenaTeam* at = sArenaTeamMgr->GetArenaTeamById(player->GetArenaTeamId(ARENA_SLOT_SOLO_3v3));
-            if (at)
-            {
-                std::stringstream s;
-                s << "Rating: " << at->GetStats().Rating;
-                s << "\nPersonal Rating: " << player->GetArenaPersonalRating(ARENA_SLOT_SOLO_3v3);
-                s << "\nRank: " << at->GetStats().Rank;
-                s << "\nSeason Games: " << at->GetStats().SeasonGames;
-                s << "\nSeason Wins: " << at->GetStats().SeasonWins;
-                s << "\nWeek Games: " << at->GetStats().WeekGames;
-                s << "\nWeek Wins: " << at->GetStats().WeekWins;
+{
+    // Show SoloQ ladder stats from the separate ladder table (no ArenaTeam required).
+    uint32 rating = 0;
+    uint32 mmr = 0;
+    Solo3v3::instance()->GetSoloRatingAndMMR(player, rating, mmr);
 
-                ChatHandler(player->GetSession()).PSendSysMessage("{}", s.str().c_str());
-                CloseGossipMenuFor(player);
+    std::stringstream s;
+    s << "Solo 3v3 Rating: " << rating;
+    s << "\nSolo 3v3 MMR: " << mmr;
 
-                ArenaTeam::MemberList::iterator itr;
-                for (itr = at->GetMembers().begin(); itr != at->GetMembers().end(); ++itr)
-                {
-                    if (itr->Guid == player->GetGUID())
-                    {
-                        std::stringstream s;
-                        s << "\nSolo MMR: " << itr->MatchMakerRating;
+    ChatHandler(player->GetSession()).PSendSysMessage("{}", s.str().c_str());
+    CloseGossipMenuFor(player);
+    return true;
+}
 
-                        ChatHandler(player->GetSession()).PSendSysMessage("{}", s.str().c_str());
-                        break;
-                    }
-                }
-            }
-
-            return true;
-        }
         case NPC_3v3_ACTION_DISBAND_ARENATEAM:
-        {
-            WorldPacket Data;
-            Data << player->GetArenaTeamId(ARENA_SLOT_SOLO_3v3);
-            player->GetSession()->HandleArenaTeamLeaveOpcode(Data);
-            ChatHandler(player->GetSession()).PSendSysMessage("Arena team deleted!");
-            CloseGossipMenuFor(player);
-            return true;
-        }
+{
+    // Legacy button kept for compatibility in some forks, but Solo Queue does not use ArenaTeam.
+    ChatHandler(player->GetSession()).SendSysMessage("Solo Queue does not use arena teams. Nothing to disband.");
+    CloseGossipMenuFor(player);
+    return true;
+}
         break;
 
         case NPC_3v3_ACTION_SCRIPT_INFO:
@@ -284,7 +239,7 @@ bool NpcSolo3v3::JoinQueueArena(Player* player, Creature* /*creature*/, bool isR
     if (sConfigMgr->GetOption<uint32>("Solo.3v3.MinLevel", 80) > player->GetLevel())
         return false;
 
-    uint8 arenatype = ARENA_TYPE_3v3;
+    uint8 arenatype = 3; // force 3v3 display for SoloQ
     uint32 arenaRating = 0;
     uint32 matchmakerRating = 0;
 
@@ -327,20 +282,15 @@ bool NpcSolo3v3::JoinQueueArena(Player* player, Creature* /*creature*/, bool isR
     uint32 ateamId = 0;
 
     if (isRated)
-    {
-        ateamId = player->GetArenaTeamId(ARENA_SLOT_SOLO_3v3);
-        ArenaTeam* at = sArenaTeamMgr->GetArenaTeamById(ateamId);
-        if (!at)
-        {
-            player->GetSession()->SendNotInArenaTeamPacket(arenatype);
-            return false;
-        }
-
-        // get the team rating for queueing
-        arenaRating = std::max(0u, at->GetRating());
-        matchmakerRating = arenaRating;
-        // the arenateam id must match for everyone in the group
-    }
+{
+    // Rated SoloQ uses its own ladder table (character_solo3v3_rating) and does NOT require an ArenaTeam.
+    uint32 rating = 0;
+    uint32 mmr = 0;
+    Solo3v3::instance()->GetSoloRatingAndMMR(player, rating, mmr);
+    arenaRating = rating;
+    matchmakerRating = mmr;
+    ateamId = 0; // no permanent arena team
+}
 
     BattlegroundQueue& bgQueue = sBattlegroundMgr->GetBattlegroundQueue(bgQueueTypeId);
     BattlegroundTypeId bgTypeId = BATTLEGROUND_AA;
