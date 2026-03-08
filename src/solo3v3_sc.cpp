@@ -16,6 +16,8 @@
  */
 
 #include "solo3v3_sc.h"
+#include "PlayerGossip.h"
+#include "PlayerGossipMgr.h"
 #include "AccountMgr.h"
 #include <unordered_map>
 
@@ -36,7 +38,7 @@ void NpcSolo3v3::Initialize()
 
 bool NpcSolo3v3::OnGossipHello(Player* player, Creature* creature)
 {
-    if (!player || !creature)
+    if (!player)
         return true;
 
     if (sConfigMgr->GetOption<bool>("Solo.3v3.Enable", true) == false)
@@ -79,14 +81,14 @@ bool NpcSolo3v3::OnGossipHello(Player* player, Creature* creature)
 
     AddGossipItemFor(player, GOSSIP_ICON_CHAT, "|TInterface/ICONS/inv_misc_questionmark:30:30:-20:0|t Help", GOSSIP_SENDER_MAIN, NPC_3v3_ACTION_SCRIPT_INFO);
 
-    SendGossipMenuFor(player, 60015, creature->GetGUID());
+    SendGossipMenuFor(player, 60015, creature ? creature->GetGUID() : player->GetGUID());
 
     return true;
 }
 
 bool NpcSolo3v3::OnGossipSelect(Player* player, Creature* creature, uint32 /*sender*/, uint32 action)
 {
-    if (!player || !creature)
+    if (!player)
         return true;
 
     player->PlayerTalkClass->ClearMenus();
@@ -178,7 +180,7 @@ bool NpcSolo3v3::OnGossipSelect(Player* player, Creature* creature, uint32 /*sen
         {
 
             AddGossipItemFor(player, GOSSIP_ICON_CHAT, "<- Back", GOSSIP_SENDER_MAIN, NPC_3v3_ACTION_MAIN_MENU);
-            SendGossipMenuFor(player, NPC_TEXT_3v3, creature->GetGUID());
+            SendGossipMenuFor(player, NPC_TEXT_3v3, creature ? creature->GetGUID() : player->GetGUID());
             return true;
         }
         break;
@@ -839,6 +841,47 @@ bool PlayerScript3v3Arena::OnPlayerCanBattleFieldPort(Player* player, uint8 aren
     return true;
 }
 
+
+
+class PlayerGossip_Solo3v3Service final : public PlayerGossip
+{
+public:
+    enum Senders
+    {
+        ROOT = 100
+    };
+
+    PlayerGossip_Solo3v3Service() : PlayerGossip(91011)
+    {
+        RegisterAction(ROOT, OpenRoot);
+        RegisterAction(GOSSIP_SENDER_MAIN, Dispatch);
+    }
+
+    static void OpenRoot(Player* player, int32, int32, std::any)
+    {
+        NpcSolo3v3 script;
+        script.OnGossipHello(player, nullptr);
+    }
+
+    static void Dispatch(Player* player, int32 sender, int32 action, std::any)
+    {
+        NpcSolo3v3 script;
+        script.OnGossipSelect(player, nullptr, uint32(sender), uint32(action));
+    }
+};
+
+namespace RTG::Services::Solo3v3
+{
+    bool Open(Player* player)
+    {
+        if (!player)
+            return false;
+
+        sPlayerGossipMgr->ShowGossipMenu(player, 91011, PlayerGossip_Solo3v3Service::ROOT, 0);
+        return true;
+    }
+}
+
 void AddSC_Solo_3v3_Arena()
 {
     if (!ArenaTeam::ArenaSlotByType.count(ARENA_TEAM_SOLO_3v3))
@@ -863,4 +906,5 @@ void AddSC_Solo_3v3_Arena()
     new PlayerScript3v3Arena();
     new Arena_SC();
     new Solo3v3Spell();
+    new PlayerGossip_Solo3v3Service();
 }
