@@ -877,6 +877,8 @@ namespace RTG::Services::Solo3v3
         if (!player)
             return false;
 
+        player->PlayerTalkClass->ClearMenus();
+        CloseGossipMenuFor(player);
         sPlayerGossipMgr->ShowGossipMenu(player, 91011, PlayerGossip_Solo3v3Service::ROOT, 0);
         return true;
     }
